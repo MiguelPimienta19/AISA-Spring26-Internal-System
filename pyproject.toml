@@ -1,0 +1,10 @@
+[project]
+name = "aisa-spring26-internal-system"
+version = "0.1.0"
+description = "This holds all of dependencies"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.135.3",
+    "pydantic>=2.12.5",
+    "uvicorn[standard]>=0.44.0",
+]
