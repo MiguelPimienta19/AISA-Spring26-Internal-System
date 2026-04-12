@@ -10,6 +10,20 @@ router = APIRouter()
 CALENDAR_DURATION_DAYS = 100
 
 
+def _validate_event(data: EventCreate, calendar: dict):
+    if data.start >= data.end:
+        raise HTTPException(status_code=400, detail="Event start must be before end")
+
+    window_start = calendar["start_date"]
+    window_end = window_start + timedelta(days=CALENDAR_DURATION_DAYS)
+
+    if data.start < window_start or data.end > window_end:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Event must fall within the 100-day window: {window_start} to {window_end}",
+        )
+
+
 # --- Calendar endpoints ---
 
 @router.post("/calendars/", response_model=CalendarResponse, status_code=201)
@@ -63,19 +77,7 @@ def create_event(calendar_id: str, data: EventCreate):
         raise HTTPException(status_code=404, detail="Calendar not found")
 
     calendar = calendars[calendar_id]
-
-    # Validate event falls within the 100-day window
-    window_start = calendar["start_date"]
-    window_end = window_start + timedelta(days=CALENDAR_DURATION_DAYS)
-
-    if data.start < window_start or data.end > window_end:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Event must fall within the 100-day window: {window_start} to {window_end}",
-        )
-
-    if data.start >= data.end:
-        raise HTTPException(status_code=400, detail="Event start must be before end")
+    _validate_event(data, calendar)
 
     # Create the event and add it to the calendar
     event_id = str(uuid.uuid4())
@@ -89,6 +91,17 @@ def create_event(calendar_id: str, data: EventCreate):
     calendar["events"][event_id] = event
 
     return EventResponse(**event)
+
+
+@router.get(
+    "/calendars/{calendar_id}/events",
+    response_model=list[EventResponse],
+)
+def list_events(calendar_id: str):
+    if calendar_id not in calendars:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+
+    return list(calendars[calendar_id]["events"].values())
 
 
 @router.get(
@@ -120,17 +133,7 @@ def update_event(calendar_id: str, event_id: str, data: EventCreate):
     if event_id not in calendar["events"]:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    window_start = calendar["start_date"]
-    window_end = window_start + timedelta(days=CALENDAR_DURATION_DAYS)
-
-    if data.start < window_start or data.end > window_end:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Event must fall within the 100-day window: {window_start} to {window_end}",
-        )
-
-    if data.start >= data.end:
-        raise HTTPException(status_code=400, detail="Event start must be before end")
+    _validate_event(data, calendar)
 
     updated_event = {
         "event_id": event_id,
