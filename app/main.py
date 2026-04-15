@@ -2,12 +2,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routers import todos, calendar
+from app.routers import todos, calendar, emails, scenarios
 
 app = FastAPI(
     title="AISA Internal System",
     version="1.0.0",
-    description="FastAPI service exposing Todo and Calendar/Event surfaces for the AISA Spring 26 benchmark.",
+    description="FastAPI service exposing Todo, Calendar/Event, and Email/Scenario surfaces for the AISA Spring 26 benchmark.",
 )
 
 
@@ -43,6 +43,8 @@ async def unhandled_exception_handler(
 
 app.include_router(todos.router)
 app.include_router(calendar.router)
+app.include_router(scenarios.router)
+app.include_router(emails.router)
 
 
 # --- Health check ---
