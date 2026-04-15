@@ -1,5 +1,4 @@
 from typing import Dict, TYPE_CHECKING
-
 from app.models.todo import TodoResponse
 
 if TYPE_CHECKING:
