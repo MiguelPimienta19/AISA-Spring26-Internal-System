@@ -133,8 +133,7 @@ def test_update_todo_not_found_returns_404():
 def test_delete_todo():
     created = client.post("/todos/", json={"title": "Delete me", "due_date": FUTURE_DATE}).json()
     response = client.delete(f"/todos/{created['id']}")
-    assert response.status_code == 200
-    assert "deleted successfully" in response.json()["message"]
+    assert response.status_code == 204
 
 
 def test_delete_todo_removes_from_store():

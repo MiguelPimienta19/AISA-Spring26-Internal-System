@@ -6,11 +6,16 @@ from app import store
 router = APIRouter(prefix="/emails", tags=["emails"])
 
 
-@router.get("/{email_id}")
+@router.get("/", response_model=list[Email])
+def list_emails() -> list[Email]:
+    return list(store.emails.values())
+
+
+@router.get("/{email_id}", response_model=Email)
 def get_email(email_id: int) -> Email:
     email = store.emails.get(email_id)
     if email is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"email {email_id} not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Email {email_id} not found")
     return email
 
 
@@ -18,6 +23,6 @@ def get_email(email_id: int) -> Email:
 def delete_email(email_id: int) -> None:
     email = store.emails.pop(email_id, None)
     if email is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"email {email_id} not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Email {email_id} not found")
     for scenario in store.scenarios.values():
         scenario.emails = [e for e in scenario.emails if e.email_id != email_id]

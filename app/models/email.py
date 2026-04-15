@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -14,5 +15,5 @@ class Email(BaseModel):
 class Scenario(BaseModel):
     emails: list[Email] = []
     scenario_id: int
-    success_criteria: str | None = None
-    puzzle_summary: str | None = None
+    success_criteria: Optional[str] = None
+    puzzle_summary: Optional[str] = None
