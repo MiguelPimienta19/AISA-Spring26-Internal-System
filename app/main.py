@@ -2,12 +2,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.routers import todos
+from app.routers import todos, calendar
 
 app = FastAPI(
-    title="AISA Internal System — Todo API",
+    title="AISA Internal System",
     version="1.0.0",
-    description="FastAPI Todo service for the AISA Spring 26 benchmark system.",
+    description="FastAPI service exposing Todo and Calendar/Event surfaces for the AISA Spring 26 benchmark.",
 )
 
 
@@ -42,10 +42,11 @@ async def unhandled_exception_handler(
 # --- Routers ---
 
 app.include_router(todos.router)
+app.include_router(calendar.router)
 
 
 # --- Health check ---
 
 @app.get("/", tags=["health"])
 def health_check() -> dict:
-    return {"status": "ok", "service": "Todo API"}
+    return {"status": "ok", "service": "AISA Internal System"}
