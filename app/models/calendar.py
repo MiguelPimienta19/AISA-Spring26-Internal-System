@@ -16,6 +16,7 @@ class EventResponse(BaseModel):
     description: Optional[str] = None
     start: datetime
     end: datetime
+    scenario_id: Optional[int] = None
 
 
 class CalendarCreate(BaseModel):

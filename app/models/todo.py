@@ -23,3 +23,5 @@ class TodoResponse(BaseModel):
     due_date: datetime
     created_at: datetime
     completed: bool = False
+    scenario_id: Optional[int] = None #if mult scenarios used to see if agent made it for correct scenario
+    calendar_event_id: Optional[str] = None #need linking a 

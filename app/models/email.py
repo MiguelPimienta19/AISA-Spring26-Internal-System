@@ -10,6 +10,7 @@ class Email(BaseModel):
     recipients: list[str]
     body: str
     email_id: int
+    scenario_id: Optional[int]= None
 
 
 class Scenario(BaseModel):
