@@ -28,3 +28,4 @@ htmlcov/
 # Claude Code
 .claude/
 CLAUDE.md
+MCP.md
