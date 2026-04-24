@@ -59,27 +59,61 @@ def test_get_email_not_found_returns_404():
     assert response.status_code == 404
 
 
-# --- Delete ---
+# --- Send (POST) ---
 
-def test_delete_email_returns_204():
+def _send_payload(**overrides) -> dict:
+    payload = {
+        "subject": "Re: Hello",
+        "sender": "bob@example.com",
+        "recipients": ["alice@example.com"],
+        "body": "Got your message",
+        "scenario_id": 1,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_send_email_returns_201():
     client.post("/scenarios/", json=SAMPLE_SCENARIO)
-    response = client.delete("/emails/1")
-    assert response.status_code == 204
+    response = client.post("/emails/", json=_send_payload())
+    assert response.status_code == 201
 
 
-def test_delete_email_removes_from_store():
+def test_send_email_returns_expected_fields():
     client.post("/scenarios/", json=SAMPLE_SCENARIO)
-    client.delete("/emails/1")
-    assert client.get("/emails/1").status_code == 404
+    data = client.post("/emails/", json=_send_payload()).json()
+    assert data["subject"] == "Re: Hello"
+    assert data["sender"] == "bob@example.com"
+    assert data["scenario_id"] == 1
+    assert "email_id" in data
+    assert "created_at" in data
 
 
-def test_delete_email_removes_from_scenario():
+def test_send_email_missing_scenario_id_returns_422():
     client.post("/scenarios/", json=SAMPLE_SCENARIO)
-    client.delete("/emails/1")
-    scenario = client.get("/scenarios/1").json()
-    assert all(e["email_id"] != 1 for e in scenario["emails"])
+    payload = _send_payload()
+    del payload["scenario_id"]
+    response = client.post("/emails/", json=payload)
+    assert response.status_code == 422
 
 
-def test_delete_email_not_found_returns_404():
-    response = client.delete("/emails/999")
+def test_send_email_nonexistent_scenario_returns_404():
+    response = client.post("/emails/", json=_send_payload(scenario_id=999))
     assert response.status_code == 404
+
+
+def test_send_email_auto_id_is_max_plus_one():
+    # fixture seeds email_id=1; next agent-sent email should get id=2
+    client.post("/scenarios/", json=SAMPLE_SCENARIO)
+    first = client.post("/emails/", json=_send_payload()).json()
+    assert first["email_id"] == 2
+    second = client.post("/emails/", json=_send_payload()).json()
+    assert second["email_id"] == 3
+
+
+def test_send_email_persists_to_store():
+    client.post("/scenarios/", json=SAMPLE_SCENARIO)
+    sent = client.post("/emails/", json=_send_payload()).json()
+    fetched = client.get(f"/emails/{sent['email_id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["email_id"] == sent["email_id"]

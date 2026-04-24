@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app import store
+from app.models.email import Scenario
 
 client = TestClient(app)
 
@@ -12,10 +13,18 @@ EVENT_END = datetime(2026, 4, 16, 10, 0, 0, tzinfo=timezone.utc).isoformat()
 # August 1 is 107 days past April 15 — outside the 100-day window
 OUTSIDE_START = datetime(2026, 8, 1, 9, 0, 0, tzinfo=timezone.utc).isoformat()
 OUTSIDE_END = datetime(2026, 8, 1, 10, 0, 0, tzinfo=timezone.utc).isoformat()
+SCENARIO_ID = 1
 
 
 def setup_function():
     store.calendars.clear()
+    store.scenarios.clear()
+    store.scenarios[SCENARIO_ID] = Scenario(scenario_id=SCENARIO_ID, emails=[])
+
+
+def teardown_function():
+    store.calendars.clear()
+    store.scenarios.clear()
 
 
 def _create_calendar():
@@ -25,7 +34,7 @@ def _create_calendar():
 def _create_event(calendar_id: str):
     return client.post(
         f"/calendars/{calendar_id}/events",
-        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     ).json()
 
 
@@ -78,7 +87,7 @@ def test_create_event_returns_201():
     cal = _create_calendar()
     response = client.post(
         f"/calendars/{cal['calendar_id']}/events",
-        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 201
 
@@ -87,7 +96,7 @@ def test_create_event_returns_expected_fields():
     cal = _create_calendar()
     response = client.post(
         f"/calendars/{cal['calendar_id']}/events",
-        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     )
     data = response.json()
     assert data["title"] == "Meeting"
@@ -98,7 +107,7 @@ def test_create_event_with_description():
     cal = _create_calendar()
     response = client.post(
         f"/calendars/{cal['calendar_id']}/events",
-        json={"title": "Standup", "description": "Daily sync", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Standup", "description": "Daily sync", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 201
     assert response.json()["description"] == "Daily sync"
@@ -108,7 +117,7 @@ def test_create_event_reversed_times_returns_400():
     cal = _create_calendar()
     response = client.post(
         f"/calendars/{cal['calendar_id']}/events",
-        json={"title": "Bad", "start": EVENT_END, "end": EVENT_START},
+        json={"title": "Bad", "start": EVENT_END, "end": EVENT_START, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 400
 
@@ -117,7 +126,7 @@ def test_create_event_outside_window_returns_400():
     cal = _create_calendar()
     response = client.post(
         f"/calendars/{cal['calendar_id']}/events",
-        json={"title": "Far future", "start": OUTSIDE_START, "end": OUTSIDE_END},
+        json={"title": "Far future", "start": OUTSIDE_START, "end": OUTSIDE_END, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 400
 
@@ -125,7 +134,7 @@ def test_create_event_outside_window_returns_400():
 def test_create_event_in_missing_calendar_returns_404():
     response = client.post(
         "/calendars/nonexistent/events",
-        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Meeting", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 404
 
@@ -163,7 +172,7 @@ def test_update_event_returns_200():
     event = _create_event(cal["calendar_id"])
     response = client.put(
         f"/calendars/{cal['calendar_id']}/events/{event['event_id']}",
-        json={"title": "Updated", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Updated", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 200
     assert response.json()["title"] == "Updated"
@@ -173,7 +182,7 @@ def test_update_event_not_found_returns_404():
     cal = _create_calendar()
     response = client.put(
         f"/calendars/{cal['calendar_id']}/events/nonexistent",
-        json={"title": "Ghost", "start": EVENT_START, "end": EVENT_END},
+        json={"title": "Ghost", "start": EVENT_START, "end": EVENT_END, "scenario_id": SCENARIO_ID},
     )
     assert response.status_code == 404
 
