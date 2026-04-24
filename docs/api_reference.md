@@ -8,13 +8,9 @@ All request and response bodies are JSON. Datetime fields use ISO 8601 (e.g. `"2
 
 ## Core Concepts
 
-### Scenarios are the unit of evaluation
-
-Every benchmark run loads one or more **scenarios** from Excel fixtures. A scenario is an email thread plus internal evaluation metadata (`success_criteria`, `puzzle_summary`). The agent reads the emails in a scenario and uses the APIs below to complete the task described in the thread.
-
 ### `scenario_id` threads through every write
 
-Every object the agent creates — a todo, a calendar event, a sent email — must be tagged with the `scenario_id` it belongs to. This is what lets the evaluator answer "which objects did the agent create for scenario X?"
+Every object the agent creates — a todo, a calendar event, a sent email — must be tagged with the `scenario_id` it belongs to.
 
 - **Required** on `POST /todos/`, `POST /calendars/{id}/events`, `POST /emails/`
 - **Validated** at create time — the server returns `404` if the `scenario_id` isn't in the store
@@ -28,7 +24,7 @@ When a task requires both a todo and a calendar event, the agent performs two ca
 1. `POST /calendars/{calendar_id}/events` — create the event, receive `event_id`
 2. `POST /todos/` with `calendar_event_id` set to that `event_id`
 
-The server validates the `calendar_event_id` exists on some calendar and `404`s otherwise. This lets the evaluator verify the agent linked the two objects correctly.
+The server validates the `calendar_event_id` exists on some calendar and `404`s otherwise.
 
 ### ID assignment conventions
 
@@ -41,7 +37,7 @@ The server validates the `calendar_event_id` exists on some calendar and `404`s 
 | Email (fixture) | integer | Caller |
 | Email (agent-sent via `POST /emails/`) | integer | Server — `max(existing_ids, default=0) + 1` |
 
-**Why the split?** Human-authored artifacts (scenarios, fixture emails) use integers so authors can reference them by number in Excel and in `success_criteria` text. Runtime-generated artifacts (todos, calendars, events) use UUIDs because they're opaque references the agent receives from the server and never needs to predict. Agent-sent emails use integers to stay in the same numbered sequence as the fixture emails they're replying to, so the evaluator can read the whole thread in order.
+**Note on `email_id`.** When you send an email via `POST /emails/`, the server assigns `max(all existing email_ids in the global store, default=0) + 1`. The counter is **global, not per-scenario** — if other scenarios are loaded with higher email ids, your reply follows the global maximum. Example: scenario 1 has emails 1–3 and scenario 2 has emails 101–103; a `POST /emails/` to scenario 1 returns `email_id: 104`, not `email_id: 4`. Within a single scenario your sent email always receives an id higher than every email that existed before the call, so relative ordering of ids within one thread still reflects chronology.
 
 ---
 
@@ -110,7 +106,7 @@ Create a new todo. The server assigns a UUID and timestamp.
 
 ### `GET /todos/`
 
-List every todo across all scenarios. The evaluator filters client-side by `scenario_id`.
+List every todo across all scenarios.
 
 **Response 200** — array of `TodoResponse`
 
@@ -211,7 +207,7 @@ Add a new event to a calendar.
 
 **Constraints**
 - `start` must be strictly before `end`
-- Both `start` and `end` must fall within the calendar's 100-day window (`start_date` through `start_date + 100 days`)
+- Both `start` and `end` must fall within the calendar's 100-day window (`start_date` through `start_date + 100 days`). The upper bound is inclusive — `end` may equal `start_date + 100 days`.
 - `scenario_id` must reference an existing scenario
 
 **Request body**
@@ -247,12 +243,12 @@ Add a new event to a calendar.
 ```
 
 **Response 400**
-- `start >= end`
-- Event falls outside the 100-day window
+- `{ "detail": "Event start must be before end" }` — `start >= end`
+- `{ "detail": "Event must fall within the 100-day window: <window_start> to <window_end>" }` — the window boundary datetimes are interpolated into the string; use them to adjust your times
 
 **Response 404**
-- Calendar not found
-- `{ "detail": "Scenario <id> not found" }`
+- `{ "detail": "Calendar not found" }` — `calendar_id` doesn't exist
+- `{ "detail": "Scenario <id> not found" }` — `scenario_id` doesn't exist
 
 ---
 
@@ -270,7 +266,9 @@ List every event on a calendar.
 Fetch a single event.
 
 **Response 200** — `EventResponse`
-**Response 404** — calendar or event not found
+**Response 404**
+- `{ "detail": "Calendar not found" }` — `calendar_id` doesn't exist
+- `{ "detail": "Event not found" }` — the `event_id` isn't on this calendar
 
 ---
 
@@ -291,7 +289,9 @@ Fetch a single event.
 Delete a single event from a calendar.
 
 **Response 204** — no body
-**Response 404** — calendar or event not found
+**Response 404**
+- `{ "detail": "Calendar not found" }` — `calendar_id` doesn't exist
+- `{ "detail": "Event not found" }` — the `event_id` isn't on this calendar
 
 ---
 
@@ -366,7 +366,7 @@ Send a new email as the agent. The server assigns `email_id` as `max(existing_id
 
 ## Scenarios
 
-A scenario groups emails together with optional evaluation metadata. Both `scenario_id` and the `email_id` of each fixture email are **integers provided by the caller** (typically an Excel loader).
+A scenario groups emails together with optional evaluation metadata. Both `scenario_id` and the `email_id` of each fixture email are **integers provided by the caller**.
 
 ### `GET /scenarios/`
 
