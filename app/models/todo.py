@@ -4,9 +4,12 @@ from pydantic import BaseModel
 
 
 class TodoCreate(BaseModel):
+    # what the agent sends. scenario_id is required so every todo is attributable.
     title: str
     description: Optional[str] = None
     due_date: datetime
+    scenario_id: int
+    calendar_event_id: Optional[str] = None
 
 
 class TodoUpdate(BaseModel):
