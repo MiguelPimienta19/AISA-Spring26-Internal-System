@@ -1,6 +1,22 @@
 # AISA Spring 26 — Internal System
 
-Unified FastAPI service for the AISA Spring 26 benchmark. Exposes four API surfaces — Todos, Calendars, Emails, and Scenarios — that an AI model can call during simulated benchmark runs.
+An LLM benchmark that tests whether AI agents can handle **time complexity** through realistic email-thread scenarios. The agent reads a scenario's emails, then uses the tool APIs (Todos, Calendars, Emails) to complete the tasks described in those threads.
+
+The benchmark now ships with an **MCP server** — agents call the API as MCP tools directly from Claude Code or any compatible harness. See `MCP.md` for setup.
+
+---
+
+## What Changed (Last Session)
+
+- **`scenario_id` is now required on every write.** Every `POST /todos/`, `POST /calendars/{id}/events`, and `POST /emails/` must include a `scenario_id` that already exists in the store. The server returns `404` otherwise. This is the single biggest behavioral change.
+- **Email API is read/write only.** There is no `DELETE /emails/{id}`. The old README listed one — it does not exist.
+- **Todo updates are `PATCH`, not `PUT`.** `PATCH /todos/{id}` is a partial update; omitted fields stay unchanged. `scenario_id` and `calendar_event_id` are immutable after creation.
+- **Calendar event updates are full replace.** `PUT /calendars/{id}/events/{event_id}` requires all fields, including `scenario_id`.
+- **Todos can link to calendar events.** `POST /todos/` accepts an optional `calendar_event_id`; the server validates the event exists. Create the event first, then the todo.
+- **Package manager is `uv`.** No more `pip` or `venv` — use `uv sync`, `uv run`, `uv add`.
+- **MCP server added** (`mcp_server/`). Exposes all 22 API routes as tools. `.mcp.json` in the repo root wires it up automatically in Claude Code.
+
+For the full, agent-facing API contract see **`docs/api_reference.md`**.
 
 ---
 
@@ -9,318 +25,162 @@ Unified FastAPI service for the AISA Spring 26 benchmark. Exposes four API surfa
 ```
 .
 ├── app/
-│   ├── __init__.py
-│   ├── main.py          # FastAPI app, error handlers, health check
-│   ├── store.py         # In-memory data store (resets on restart)
+│   ├── main.py           # FastAPI app, error handlers, health check
+│   ├── store.py          # In-memory store (resets on restart)
 │   ├── models/
-│   │   ├── __init__.py
-│   │   ├── todo.py      # TodoCreate, TodoUpdate, TodoResponse
-│   │   ├── calendar.py  # CalendarCreate, CalendarResponse, EventCreate, EventResponse
-│   │   └── email.py     # Email, Scenario
+│   │   ├── todo.py       # TodoCreate, TodoUpdate, TodoResponse
+│   │   ├── calendar.py   # CalendarCreate, CalendarResponse, EventCreate, EventResponse
+│   │   └── email.py      # Email, Scenario
 │   └── routers/
-│       ├── __init__.py
-│       ├── todos.py      # /todos endpoints
-│       ├── calendar.py   # /calendars endpoints
-│       ├── emails.py     # /emails endpoints
-│       └── scenarios.py  # /scenarios endpoints
+│       ├── todos.py
+│       ├── calendar.py
+│       ├── emails.py
+│       └── scenarios.py
+├── mcp_server/           # MCP wrapper — thin HTTP clients over FastAPI
+├── docs/
+│   └── api_reference.md  # Authoritative agent-facing reference
 ├── tests/
-│   ├── __init__.py
 │   ├── test_todos.py     # 18 tests
 │   ├── test_calendars.py # 22 tests
 │   ├── test_emails.py    # 8 tests
 │   └── test_scenarios.py # 18 tests
-├── requirements.txt
-└── README.md
+├── .mcp.json             # Auto-registers MCP server in Claude Code
+├── MCP.md                # MCP setup and usage guide
+└── pyproject.toml
 ```
 
 ---
 
 ## Setup
 
-**1. Create and activate a virtual environment**
+```bash
+uv sync
+```
+
+That's it. No manual `venv` creation, no `pip install`.
+
+---
+
+## Running
+
+**1. Start FastAPI** (required — keep this running the whole time):
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+uv run uvicorn app.main:app --reload
 ```
 
-**2. Install dependencies**
+Server starts at `http://127.0.0.1:8000`. Swagger UI at `/docs`, ReDoc at `/redoc`.
+
+**2. The MCP server** starts automatically via `.mcp.json` when you open Claude Code in this repo. Verify with:
 
 ```bash
-pip install -r requirements.txt
+claude mcp list
+# aisa: bash -c uv run python -m mcp_server  ✓ Connected
 ```
 
----
-
-## Running the Server
-
-```bash
-uvicorn app.main:app --reload
-```
-
-Server starts at **http://127.0.0.1:8000**. `--reload` restarts automatically on file changes.
-
----
-
-## Interactive API Docs
-
-- **http://127.0.0.1:8000/docs** — Swagger UI
-- **http://127.0.0.1:8000/redoc** — ReDoc
-
----
-
-## API Endpoints
-
-### Health
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/` | Health check — returns `{"status": "ok"}` |
-
----
-
-### Todos
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/todos/` | Create a todo |
-| `GET` | `/todos/` | List all todos |
-| `GET` | `/todos/{id}` | Get a todo by ID |
-| `PUT` | `/todos/{id}` | Update todo fields (partial update) |
-| `DELETE` | `/todos/{id}` | Delete a todo |
-
-**Todo fields**
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | string (UUID) | Auto-generated |
-| `title` | string | Required |
-| `description` | string | Optional |
-| `due_date` | datetime (ISO 8601) | Required |
-| `created_at` | datetime | Auto-set on creation |
-| `completed` | boolean | Defaults to `false` |
-
-**Examples**
-
-```bash
-# Create
-curl -X POST http://127.0.0.1:8000/todos/ \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Write report", "due_date": "2026-05-01T12:00:00Z"}'
-
-# List all
-curl http://127.0.0.1:8000/todos/
-
-# Mark completed
-curl -X PUT http://127.0.0.1:8000/todos/<id> \
-  -H "Content-Type: application/json" \
-  -d '{"completed": true}'
-
-# Delete
-curl -X DELETE http://127.0.0.1:8000/todos/<id>
-```
-
----
-
-### Calendars & Events
-
-Calendars define a 100-day time window. Events must fall within that window.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/calendars/` | Create a calendar |
-| `GET` | `/calendars/{id}` | Get a calendar with its events |
-| `DELETE` | `/calendars/{id}` | Delete a calendar |
-| `POST` | `/calendars/{id}/events` | Add an event to a calendar |
-| `GET` | `/calendars/{id}/events` | List events in a calendar |
-| `GET` | `/calendars/{id}/events/{event_id}` | Get a single event |
-| `PUT` | `/calendars/{id}/events/{event_id}` | Update an event |
-| `DELETE` | `/calendars/{id}/events/{event_id}` | Delete an event |
-
-**Calendar fields**
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `calendar_id` | string (UUID) | Auto-generated |
-| `start_date` | datetime (ISO 8601) | Required. Defines the start of the 100-day window |
-| `events` | list | Events belonging to this calendar |
-
-**Event fields**
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `event_id` | string (UUID) | Auto-generated |
-| `title` | string | Required |
-| `description` | string | Optional |
-| `start` | datetime (ISO 8601) | Required. Must be before `end` and within the calendar window |
-| `end` | datetime (ISO 8601) | Required |
-
-**Examples**
-
-```bash
-# Create a calendar
-curl -X POST http://127.0.0.1:8000/calendars/ \
-  -H "Content-Type: application/json" \
-  -d '{"start_date": "2026-04-15T00:00:00Z"}'
-
-# Add an event
-curl -X POST http://127.0.0.1:8000/calendars/<id>/events \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Team sync", "start": "2026-04-16T09:00:00Z", "end": "2026-04-16T10:00:00Z"}'
-
-# List events
-curl http://127.0.0.1:8000/calendars/<id>/events
-```
-
----
-
-### Emails
-
-Emails are created as part of a Scenario (or added to one via `POST /scenarios/{id}/emails`). They can be fetched and deleted individually.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/emails/` | List all emails |
-| `GET` | `/emails/{id}` | Get an email by ID |
-| `DELETE` | `/emails/{id}` | Delete an email (also removes it from its scenario) |
-
-**Email fields**
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `email_id` | integer | Required. Provided by the caller |
-| `subject` | string | Required |
-| `sender` | string | Required |
-| `recipients` | list of strings | Required |
-| `body` | string | Required |
-| `created_at` | datetime (ISO 8601) | Required |
-
-**Examples**
-
-```bash
-# List all emails
-curl http://127.0.0.1:8000/emails/
-
-# Get a specific email
-curl http://127.0.0.1:8000/emails/1
-
-# Delete an email
-curl -X DELETE http://127.0.0.1:8000/emails/1
-```
-
----
-
-### Scenarios
-
-A scenario groups a set of emails together with optional metadata. Creating a scenario also registers all its emails in the email store.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/scenarios/` | List all scenarios |
-| `POST` | `/scenarios/` | Create a scenario |
-| `GET` | `/scenarios/{id}` | Get a scenario by ID |
-| `DELETE` | `/scenarios/{id}` | Delete a scenario (also removes its emails) |
-| `POST` | `/scenarios/{id}/emails` | Add an email to an existing scenario |
-
-**Scenario fields**
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `scenario_id` | integer | Required. Provided by the caller |
-| `emails` | list of Email | Optional. Emails included at creation time |
-| `success_criteria` | string | Optional |
-| `puzzle_summary` | string | Optional |
-
-**Examples**
-
-```bash
-# Create a scenario with emails
-curl -X POST http://127.0.0.1:8000/scenarios/ \
-  -H "Content-Type: application/json" \
-  -d '{
-    "scenario_id": 1,
-    "success_criteria": "Agent forwards the email correctly",
-    "emails": [{
-      "email_id": 1,
-      "subject": "Hello",
-      "sender": "alice@example.com",
-      "recipients": ["bob@example.com"],
-      "body": "Hi there",
-      "created_at": "2026-04-15T10:00:00Z"
-    }]
-  }'
-
-# Add an email to an existing scenario
-curl -X POST http://127.0.0.1:8000/scenarios/1/emails \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email_id": 2,
-    "subject": "Follow-up",
-    "sender": "alice@example.com",
-    "recipients": ["bob@example.com"],
-    "body": "Did you see my last message?",
-    "created_at": "2026-04-15T11:00:00Z"
-  }'
-
-# Delete a scenario (removes its emails too)
-curl -X DELETE http://127.0.0.1:8000/scenarios/1
-```
-
----
-
-## Error Handling
-
-All errors return structured JSON:
-
-| Status | Meaning |
-|--------|---------|
-| `400` | Invalid request (e.g. event start after end, outside calendar window) |
-| `404` | Resource not found |
-| `409` | Conflict (e.g. duplicate scenario or email ID) |
-| `422` | Validation error (missing required field, wrong type) |
-| `500` | Unexpected server error |
-
-Example 404:
-```json
-{"detail": "Todo 'abc-123' not found."}
-```
-
-Example 422:
-```json
-{"error": "Validation error", "detail": [...]}
-```
+See `MCP.md` for non-Claude-Code clients (MCP Inspector, Claude Desktop, custom harnesses).
 
 ---
 
 ## Running Tests
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
-Expected output: **66 passed**. Coverage:
+Expected: **66 passed**.
 
-| File | Tests | Covers |
-|------|-------|--------|
-| `test_todos.py` | 18 | Full CRUD, 404/422 errors |
-| `test_calendars.py` | 22 | Calendars + events, window validation |
-| `test_emails.py` | 8 | List, get, delete, cascade removal |
-| `test_scenarios.py` | 18 | Full scenario lifecycle, email management |
-
----
-
-## Data Persistence
-
-The store is **in-memory only** — all data resets when the server restarts. This is intentional: each benchmark run starts from a clean state.
+| File | Tests |
+|------|-------|
+| `test_todos.py` | 18 |
+| `test_calendars.py` | 22 |
+| `test_emails.py` | 8 |
+| `test_scenarios.py` | 18 |
 
 ---
 
-## Dependencies
+## Core Concepts
 
-| Package | Purpose |
-|---------|---------|
-| `fastapi` | Web framework |
-| `uvicorn` | ASGI server |
-| `pydantic` | Data validation and schemas |
-| `pytest` | Test runner |
-| `httpx` | HTTP client used by FastAPI's `TestClient` |
+### `scenario_id` threads through every write
+
+Every object the agent creates must be tagged with a `scenario_id`. The server validates the scenario exists and returns `404` if it doesn't. Load a scenario first via `POST /scenarios/` before calling any create endpoint.
+
+```
+POST /scenarios/  →  POST /emails/
+                      POST /calendars/{id}/events
+                      POST /todos/
+```
+
+### Linking todos to calendar events
+
+When a task requires both a calendar event and a todo:
+
+1. `POST /calendars/{calendar_id}/events` — get back `event_id`
+2. `POST /todos/` with `calendar_event_id` set to that `event_id`
+
+Order matters — the server validates `calendar_event_id` exists at todo creation time.
+
+### In-memory store
+
+All data resets when uvicorn restarts. Every benchmark run starts clean. This is intentional.
+
+---
+
+## API Surface
+
+Full reference with request/response shapes, error codes, and examples: **`docs/api_reference.md`**.
+
+Quick endpoint map:
+
+| Group | Method | Path |
+|-------|--------|------|
+| Health | `GET` | `/` |
+| Todos | `POST` | `/todos/` |
+| | `GET` | `/todos/` |
+| | `GET` | `/todos/{id}` |
+| | `PATCH` | `/todos/{id}` ← partial update |
+| | `DELETE` | `/todos/{id}` |
+| Calendars | `POST` | `/calendars/` |
+| | `GET` | `/calendars/{id}` |
+| | `DELETE` | `/calendars/{id}` |
+| Events | `POST` | `/calendars/{id}/events` |
+| | `GET` | `/calendars/{id}/events` |
+| | `GET` | `/calendars/{id}/events/{event_id}` |
+| | `PUT` | `/calendars/{id}/events/{event_id}` ← full replace |
+| | `DELETE` | `/calendars/{id}/events/{event_id}` |
+| Emails | `GET` | `/emails/` |
+| | `GET` | `/emails/{id}` |
+| | `POST` | `/emails/` ← no DELETE |
+| Scenarios | `GET` | `/scenarios/` |
+| | `POST` | `/scenarios/` |
+| | `GET` | `/scenarios/{id}` |
+| | `DELETE` | `/scenarios/{id}` |
+| | `POST` | `/scenarios/{id}/emails` |
+
+### Key constraints
+
+- `PATCH /todos/{id}` — partial update only; `scenario_id` and `calendar_event_id` cannot be changed
+- `PUT /calendars/{id}/events/{event_id}` — full replace; send every field
+- Calendar events must fall within the calendar's 100-day window (`start_date` through `start_date + 100 days`)
+- Agent-sent email IDs: `max(all existing email_ids in store, default=0) + 1` — the counter is global, not per-scenario
+
+### Error codes
+
+| Status | Meaning |
+|--------|---------|
+| `400` | Invalid field values, constraint violation (e.g. event outside window) |
+| `404` | Resource not found — also fires when `scenario_id` or `calendar_event_id` reference is missing |
+| `409` | Conflict — caller-assigned ID already exists |
+| `422` | Missing required field or wrong type |
+| `500` | Unexpected server error |
+
+---
+
+## Tooling
+
+| Tool | Version / Notes |
+|------|-----------------|
+| Package manager | `uv` — use `uv add`, `uv sync`, `uv run` |
+| Framework | FastAPI |
+| Validation | Pydantic v2 |
+| Test runner | pytest via `uv run pytest` |
